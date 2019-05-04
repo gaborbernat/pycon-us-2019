@@ -1,0 +1,1940 @@
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>Type hints inside the snake pit</title>
+
+    <meta name="description"
+          content="Type hinting for Python (as a linter tool) came out back in September 2015 as part of Python 3.5 (and was championed by Guido himself). Since then, variable annotations (plus, more recently, protocols) improved its capabilities even further. Over the last two years, tools, such as mypy, could build on top of it. Slowly, these annotations have emerged from a proof of concept state (e.g., mypy API planning) to becoming a stable feature. In this presentation, Bernat will detail his experience using type hinting for both adding type hinting and checking type correctness for a library supporting both Python 2 and 3, and reusing this information to automatically insert type data into the generated Sphinx documentation.">
+    <meta name="author" content="Bernat Gabor">
+
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+    <link rel="stylesheet" href="./node_modules/reveal.js/css/reveal.css">
+    <link rel="stylesheet" href="./node_modules/reveal.js/css/theme/solarized.css">
+    <link rel="stylesheet"
+          href="./node_modules/highlight.js/styles/solarized-light.css">
+    <link rel="shortcut icon" type="image/png" href="./img/bloomberg_logo_github.png"/>
+
+    <style>
+        body {
+            background-color: white !important;
+        }
+
+        ::selection {
+            background: lightblue; /* WebKit/Blink Browsers */
+        }
+
+        mark {
+            background-color: greenyellow;
+        }
+
+        .reveal section img {
+            max-height: 1024px;
+            max-width: 1024px;
+        }
+
+        .reveal ul {
+            margin: 0 auto;
+            width: 90%;
+        }
+
+        .reveal pre {
+            box-shadow: unset;
+            margin: 0 auto;
+        }
+
+        .reveal .controls {
+            bottom: unset;
+            top: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="reveal">
+    <div class="slides">
+
+        <section>
+            <h1>Type hints</h1>
+            <h5>inside the snake pit</h5>
+            <p>
+                <small>by <a href="https://github.com/gaborbernat">Bernat Gabor</a> /
+                    <a src="https://twitter.com/gjbernat">@gjbernat</a> /
+                    <a href="https://github.com/bloomberg">Bloomberg</a>
+                </small>
+                <br>
+                <a href="https://gaborbernat.github.io/pycon-us-2019/">https://gaborbernat.github.io/pycon-us-2019</a>
+            </p>
+        </section>
+
+        <section>
+            <h3>Who am I?</h3>
+
+            <div>
+                <ul>
+                    <li class="fragment"><a href="https://github.com/gaborbernat">github/gaborbernat</a></li>
+                    <li class="fragment">maintainer of the <a href="https://pypi.org/project/virtualenv">virtualenv
+                        tool</a> (PyPa member)
+                    </li>
+                    <li class="fragment">maintainer of the <a href="https://pypi.org/project/tox">tox</a> tool</li>
+                    <li class="fragment">software engineer at Bloomberg (data ingestion and quality control)</li>
+                    <li class="fragment"> typing summit participant</li>
+                </ul>
+            </div>
+        </section>
+
+        <section>
+            <h1>In Python?</h1>
+            <img style="margin-bottom: 0; border-bottom: 0;"
+                 src="./img/interested.jpg"/>
+            <p style="font-size: 12px; margin: 0 0;"><a
+                    href="https://commons.wikimedia.org/wiki/File:New_Zealand_Fur_seal.FZ200_(14502532505).jpg">&copy;
+                Creative Commons CC0 1.0</a></p>
+        </section>
+
+        <section>
+            <h2>Type hinting</h2>
+            <ul>
+                <li>foundations laid down in <a
+                        href="https://www.python.org/dev/peps/pep-0484/">PEP-484</a>
+                </li>
+                <li class="fragment">implemented by (+ reference checker - mypy)
+                    <ul>
+                        <li>Guido van Rossum - BDFL</li>
+                        <li>Jukka Lehtosalo - mypy</li>
+                        <li>Ivan Levkivskyi</li>
+                        <li>Łukasz Langa</li>
+                    </ul>
+                </li>
+                <div class="fragment">
+                    <li>added to Python standard library with version 3.5 (improved ever since)</li>
+                    <pre style="height: 70px; font-size: 1em;">
+                    <code class="lang-python" data-trim data-noescape>
+                    from typing import Any
+                    </code>
+                </pre>
+                </div>
+            </ul>
+        </section>
+
+        <section>
+            <h2>Type hinting</h2>
+            <ul>
+                <li>still on Python 2?</li>
+                <ol>
+                    <div class="fragment">
+                        <li style="color: red">end of life at 2020 January 1
+                            <div class="fragment" style="font-size: 12px">
+                                <img style="margin-bottom: 0; border-bottom: 0"
+                                     src="img/doom.jpg"/>
+                                <div class="ccmessage"> &nbsp; © Copyright
+                                    <a title="View profile"
+                                       href="https://www.geograph.org.uk/profile/14700"
+                                       property="cc:attributionName"
+                                       rel="cc:attributionURL dct:creator">Chris
+                                        Downer</a> and
+                                    licensed for <a
+                                            href="http://www.geograph.org.uk/reuse.php?id=918881">reuse</a>
+                                    under this <a
+                                            rel="license"
+                                            href="http://creativecommons.org/licenses/by-sa/2.0/"
+                                            class="nowrap"
+                                            about="http://s0.geograph.org.uk/photos/91/88/918881_587d2859.jpg"
+                                            title="Creative Commons Attribution-Share Alike 2.0 Licence">Creative
+                                        Commons
+                                        Licence</a>.
+                                </div>
+                            </div>
+                        </li>
+
+                        <li class="fragment">it's available (backported) via <a
+                                href="https://pypi.org/project/typing/">PyPi
+                            package</a> down to 2.7 😃
+                        </li>
+                    </div>
+                </ol>
+            </ul>
+        </section>
+
+        <section>
+            <h1>why do it?</h1>
+            <img style="margin-bottom: 0; border-bottom: 0;" src="./img/pinguin.jpg"/>
+            <p style="font-size: 12px; margin: 0 0;"><a
+                    href="https://www.pexels.com/photo/cold-nature-cute-ice-52509/">&copy;
+                Creative Commons CC0 1.0</a></p>
+        </section>
+
+        <section>
+            <h2>easier to</h2>
+            <ul class="plus" style="display: block; margin: 20px auto; width: 90%">
+                <li>understand (and use) the source code</li>
+                <li class="fragment">maintain</li>
+                <li class="fragment">debug</li>
+            </ul>
+            <pre style="font-size: 0.75em" class="fragment">
+                <code class="lang-python" data-trim data-noescape>
+                 def send_request(request_data : Any,
+                                  headers: Optional[Dict[str, str]],
+                                  user_id: Optional[UserId] = None,
+                                  as_json: bool = True):
+                     pass
+                </code>
+            </pre>
+        </section>
+
+        <section>
+            <h2>easier to</h2>
+            <ul class="plus" style="display: block; margin: 20px auto; width: 90%">
+                <li>understand (and use) the source code</li>
+                <li>maintain</li>
+                <li>debug</li>
+            </ul>
+            <pre style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+                def send_request(<mark>request_data</mark> : <mark>Any</mark>,
+                                 headers: Optional[Dict[str, str]],
+                                 user_id: Optional[UserId] = None,
+                                 as_json: bool = True):
+                    pass
+                </code>
+            </pre>
+        </section>
+
+        <section>
+            <h2>easier to</h2>
+            <ul class="plus" style="display: block; margin: 20px auto; width: 90%">
+                <li>understand (and use) the source code</li>
+                <li>maintain</li>
+                <li>debug</li>
+            </ul>
+            <pre style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+                def send_request(request_data : Any,
+                                 <mark>headers</mark>: <mark>Optional[Dict[str, str]]</mark>,
+                                 user_id: Optional[UserId] = None,
+                                 as_json: bool = True):
+                    pass
+                </code>
+            </pre>
+        </section>
+
+
+        <section>
+            <h2>easier to</h2>
+            <ul class="plus" style="display: block; margin: 20px auto; width: 90%">
+                <li>understand (and use) the source code</li>
+                <li>maintain</li>
+                <li>debug</li>
+            </ul>
+            <pre style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+                def send_request(request_data : Any,
+                                 headers: Optional[Dict[str, str]],
+                                 <mark>user_id</mark>: <mark>Optional[UserId]</mark> = None,
+                                 as_json: bool = True):
+                    pass
+                </code>
+            </pre>
+        </section>
+
+        <section>
+            <h2>easier to</h2>
+            <ul class="plus" style="display: block; margin: 20px auto; width: 90%">
+                <li>understand (and use) the source code</li>
+                <li>maintain</li>
+                <li>debug</li>
+            </ul>
+            <pre style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+                def send_request(request_data : Any,
+                                 headers: Optional[Dict[str, str]],
+                                 user_id: Optional[UserId] = None,
+                                 <mark>as_json</mark>: <mark>bool</mark> = True):
+                    pass
+                </code>
+            </pre>
+        </section>
+
+        <section>
+            <h2>Easier refactoring</h2>
+            <ul class="plus" style="display: block; margin: 20px auto; width: 90%">
+                <li>find usages of types</li>
+                <li class="fragment">discover call hierarchy</li>
+                <li class="fragment">better detection of objects and lifecycle flow</li>
+            </ul>
+        </section>
+
+        <section>
+            <h2>help editors suggestion engine</h2>
+            <img src="img/editor_suggest.png"/>
+        </section>
+
+        <section>
+            <h2>lint checks - find bugs with no tests</h2>
+            <ul>
+                <li>IDE - PyCharm/VsCode<br/>
+                    <img src="img/type_missmatch.jpg"/>
+                </li>
+                <li class="fragment"><a href="http://mypy-lang.org/">mypy - reference implementation type checker</a>
+                </li>
+                <li class="fragment"><a href="https://pyre-check.org/">pyre</a> - Facebook</li>
+                <li class="fragment"><a href="https://github.com/google/pytype">pytype</a> - Google</li>
+                <li class="fragment"><a href="https://github.com/Microsoft/pyright">pyright</a> - Microsoft</li>
+            </ul>
+
+        </section>
+
+        <section>
+            <h2>improve documentation</h2>
+            <img src="img/documentation.png"/>
+        </section>
+
+        <style>
+            ul.plus {
+                display: block;
+                margin: 20px auto;
+                width: 90%;
+                color: darkgreen;
+                font-size: 0.8em;
+                list-style: none;
+            }
+
+            ul.plus li:before {
+                content: '\2714';
+                margin: 0 1em; /* any design */
+            }
+
+            ul.cross {
+                display: block;
+                margin: 20px auto;
+                width: 90%;
+                color: darkred;
+                font-size: 0.8em;
+                list-style: none;
+            }
+
+            ul.cross li:before {
+                content: '\2718';
+                margin: 0 1em; /* any design */
+            }
+        </style>
+
+        <section>
+            <h2>data validation - pydantic</h2>
+            <ul class="plus" style="display: block; margin: 20px auto; width: 90%">
+                <li>a cleaner syntax to specify type requirements</li>
+                <pre style="font-size: 0.75em">
+                    <code class="lang-python" style="max-height: 500px;" data-trim data-noescape>
+                    from datetime import datetime
+                    from typing import List
+                    from pydantic import BaseModel, ValidationError
+
+                    class User(BaseModel):
+                        id: int
+                        name = 'John Doe'
+                        signup_ts: datetime = None
+                        friends: List[int] = []
+
+                    external_data = {'id': '123', 'signup_ts': 'broken',
+                                     'friends': [1, 2, 'not a number']}
+                    try:
+                        user = User(**external_data)
+                    except ValidationError as e:
+                        print(e.json())
+
+                    </code>
+                </pre>
+            </ul>
+        </section>
+
+        <section>
+            <h2>detect vulnerable code - security</h2>
+            <p>Facebook - pyre</p>
+            <pre style="font-size: 0.75em">
+                    <code class="lang-python" style="max-height: 500px;" data-trim data-noescape>
+                    def magic_call(unsafe: UserProvidedStr, safe: str):
+                        subprocess.check_call([unsafe])
+                        subprocess.check_call([safe])
+                    </code>
+                </pre>
+        </section>
+
+        <section>
+            <h2>detect vulnerable code - security</h2>
+            <p>Facebook - pyre</p>
+            <pre style="font-size: 0.75em">
+                    <code class="lang-python" style="max-height: 500px;" data-trim data-noescape>
+                    def magic_call(<mark>unsafe</mark>: UserProvidedStr, safe: str):
+                        <mark>subprocess.check_call([unsafe])</mark> # error out
+                        subprocess.check_call([safe])
+                    </code>
+                </pre>
+        </section>
+
+        <section>
+            <h2>detect vulnerable code - security</h2>
+            <p>Facebook - pyre</p>
+            <pre style="font-size: 0.75em">
+                    <code class="lang-python" style="max-height: 500px;" data-trim data-noescape>
+                    def magic_call(unsafe: UserProvidedStr, <mark>safe: str</mark>):
+                        subprocess.check_call([unsafe])
+                        <mark>subprocess.check_call([safe])</mark> # allow
+                    </code>
+                </pre>
+        </section>
+
+
+        <section>
+            <h2>data validation - <a href="https://github.com/samuelcolvin/pydantic">pydantic</a></h2>
+            <ul class="plus" style="display: block; margin: 20px auto; width: 90%">
+                <li>a cleaner syntax to specify type requirements</li>
+                <pre style="font-size: 0.75em">
+                    <code class="lang-python" style="max-height: 500px;" data-trim data-noescape>
+                    from datetime import datetime
+                    from typing import List
+                    from pydantic import BaseModel, ValidationError
+
+                    class User(BaseModel):
+                        id: int
+                        name = 'John Doe'
+                        <mark>signup_ts: datetime</mark> = None
+                        friends: List[int] = []
+
+                    external_data = {'id': '123', <mark>'signup_ts': 'broken'</mark>,
+                                     'friends': [1, 2, 'not a number']}
+                    try:
+                        user = User(**external_data)
+                    except <mark>ValidationError</mark> as e:
+                        print(e.json())
+
+                    </code>
+                </pre>
+            </ul>
+
+        </section>
+
+        <section>
+            <h2>data validation - pydantic</h2>
+            <ul class="plus" style="display: block; margin: 20px auto; width: 90%">
+                <li>a cleaner syntax to specify type requirements</li>
+                <pre style="font-size: 0.75em">
+                    <code class="lang-python" style="max-height: 500px;" data-trim data-noescape>
+                    from datetime import datetime
+                    from typing import List
+                    from pydantic import BaseModel, ValidationError
+
+                    class User(BaseModel):
+                        id: int
+                        name = 'John Doe'
+                        signup_ts: datetime = None
+                        <mark>friends: List[int]</mark> = []
+
+                    external_data = {'id': '123', 'signup_ts': 'broken',
+                                     'friends': [1, 2, <mark>'not a number'</mark>]}
+                    try:
+                        user = User(**external_data)
+                    except <mark>ValidationError</mark> as e:
+                        print(e.json())
+
+                    </code>
+                </pre>
+            </ul>
+
+        </section>
+
+
+        <section>
+            <h2>what it is not</h2>
+            <p style="color: red">essentially treated as comment during script evaluation</p>
+            <ul class="cross" style="display: block; margin: 20px auto; width: 90%">
+                <li class="fragment">no runtime type inference</li>
+                <li class="fragment">no performance improvement</li>
+            </ul>
+        </section>
+
+        <section>
+            <h2>what it is not</h2>
+            <p style="color: red">essentially treated as comment during script evaluation</p>
+            <ul class="cross" style="display: block; margin: 20px auto; width: 90%">
+                <li>no runtime type inference</li>
+                <li><s>no performance improvement</s>
+
+                </li>
+            </ul>
+        </section>
+        <section>
+            <h2><a href="https://github.com/mypyc/mypyc">mypyc</a> - speed up for free (mostly)</h2>
+            <ul>
+                <li class="fragment">compile a C extension type hinted code (not full syntax support yet)</li>
+                <li class="fragment">4 to 20 X performance improvement (due to avoid hashtable lookups)</li>
+                <li class="fragment"><a href="http://mypy-lang.org">mypy</a> uses it for now, planned <a
+                        href="https://github.com/python/black">black</a></li>
+            </ul>
+        </section>
+
+
+        <section>
+            <p>Improve the developer experience, not performance</p>
+            <img src="img/happy_programmer.jpeg"
+                 style="margin-bottom: 0; border-bottom: 0;"/>
+            <p style="font-size: 12px; margin: 0 0;"><a
+                    href="https://www.pexels.com/photo/adult-chill-computer-connection-450271/">&copy;
+                Creative Commons CC0 License</a></p>
+        </section>
+
+        <section>
+            <p>Improve the developer experience, <s>not performance</s></p>
+            <img src="img/happy_programmer.jpeg"
+                 style="margin-bottom: 0; border-bottom: 0;"/>
+            <p style="font-size: 12px; margin: 0 0;"><a
+                    href="https://www.pexels.com/photo/adult-chill-computer-connection-450271/">&copy;
+                Creative Commons CC0 License</a></p>
+        </section>
+
+
+        <section>
+            <p>Improve the developer experience, and performance</p>
+            <img src="img/happy_programmer.jpeg"
+                 style="margin-bottom: 0; border-bottom: 0;"/>
+            <p style="font-size: 12px; margin: 0 0;"><a
+                    href="https://www.pexels.com/photo/adult-chill-computer-connection-450271/">&copy;
+                Creative Commons CC0 License</a></p>
+        </section>
+
+
+        <section>
+            <h1>what kind of?</h1>
+            <img style="margin-bottom: 0; border-bottom: 0;"
+                 src="./img/pinguin_jump.jpg"/>
+            <p style="font-size: 12px; margin: 0 0;"><a
+                    href="https://commons.wikimedia.org/wiki/File:Penguin_in_Antarctica_jumping_out_of_the_water.jpg">&copy;
+                Creative Commons CC0 1.0</a></p>
+        </section>
+
+        <section>
+            <h2>Gradual typing</h2>
+            <ul style="display: block; margin: 20px auto; width: 90%">
+                <li>no type hints specified ⇒ code dynamically typed</li>
+                <li class="fragment">but we can type hint
+                    <ul>
+                        <li>function parameters</li>
+                        <li>function return values</li>
+                        <li>variables</li>
+                    </ul>
+                </li>
+                <li class="fragment" style="color: darkred"><i><b>only</b></i> type
+                    hinted elements are type checked
+                </li>
+            </ul>
+        </section>
+
+        <section>
+            <h2>gradual typing</h2>
+            <ul>
+                <li>running linter will report errors (if called code is type hinted):
+                </li>
+            </ul>
+            <pre style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+                    # tests/test_magic_field.py
+                    f = MagicField(name=1, MagicType.DEFAULT)
+                    f.names()</code>
+            </pre>
+            <pre style="font-size: 0.6em">
+                <code class="lang-python" data-trim data-noescape>
+                bernat@uvm ~/python-magic (master●)$ mypy --ignore-missing-imports tests/test_magic_field.py
+                tests/test_magic_field.py:21: error: Argument 1 to "MagicField" has incompatible type "int";
+                    expected "Union[str, bytes]"
+                tests/test_magic_field.py:22: error: "MagicField" has no attribute "names"; maybe "name" or "_name"?
+                </code>
+            </pre>
+        </section>
+
+        <section>
+            <h2>gradual typing</h2>
+            <ul>
+                <li>running linter will report errors (if called code is type hinted):
+                </li>
+            </ul>
+
+            <pre style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+                    # tests/test_magic_field.py
+                    f = MagicField(name=1, MagicType.DEFAULT)
+                    f.names()</code>
+            </pre>
+
+            <pre style="font-size: 0.6em">
+                <code class="lang-python" data-trim data-noescape>
+                bernat@uvm ~/python-magic (master●)$ <mark>mypy</mark> --ignore-missing-imports <mark>tests/test_magic_field.py</mark>
+                tests/test_magic_field.py:21: error: Argument 1 to "MagicField" has incompatible type "int";
+                    expected "Union[str, bytes]"
+                tests/test_magic_field.py:22: error: "MagicField" has no attribute "names"; maybe "name" or "_name"?
+                </code>
+            </pre>
+        </section>
+
+        <section>
+            <h2>gradual typing</h2>
+            <ul>
+                <li>running linter will report errors (if called code is type hinted):
+                </li>
+            </ul>
+
+            <pre style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+                    # tests/test_magic_field.py
+                    <mark>f = MagicField(1, MagicType.DEFAULT)</mark>
+                    f.names()
+                </code>
+            </pre>
+            <pre style="font-size: 0.6em">
+                <code class="lang-python" data-trim data-noescape>
+                bernat@uvm ~/python-magic (master●)$ mypy --ignore-missing-imports tests/test_magic_field.py
+                <mark>tests/test_magic_field.py:21: error: Argument 1 to "MagicField" has incompatible type "int";
+                    expected "Union[str, bytes]"</mark>
+                tests/test_magic_field.py:22: error: "MagicField" has no attribute "names"; maybe "name" or "_name"?
+                </code>
+            </pre>
+        </section>
+
+        <section>
+            <h2>gradual typing</h2>
+            <ul>
+                <li>running linter will report errors (if called code is type hinted):
+                </li>
+            </ul>
+
+            <pre style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+                    # tests/test_magic_field.py
+                    f = MagicField(1, MagicType.DEFAULT)
+                    <mark>f.names()</mark>
+                </code>
+            </pre>
+            <pre style="font-size: 0.6em">
+                <code class="lang-python" data-trim data-noescape>
+                bernat@uvm ~/python-magic (master●)$ mypy --ignore-missing-imports tests/test_magic_field.py
+                tests/test_magic_field.py:21: error: Argument 1 to "MagicField" has incompatible type "int";
+                    expected "Union[str, bytes]"
+                <mark>tests/test_magic_field.py:22: error: "MagicField" has no attribute "names"; maybe "name" or "_name"?</mark>
+                </code>
+            </pre>
+        </section>
+
+        <section>
+            <h1>How to add it</h1>
+            <img src="./img/how.jpg" style="margin-bottom: 0; border-bottom: 0;"/>
+            <p style="font-size: 12px; margin: 0 0;"><a
+                    href="https://pixabay.com/en/seal-beach-waves-water-surf-2243104/">&copy;
+                Creative Commons CC0 License</a></p>
+        </section>
+
+
+        <section>
+            <h2>type annotations</h2>
+            <h3>syntax based on</h3>
+            <ul>
+                <li>mypy</li>
+
+                <li class="fragment"><a
+                        href="https://www.python.org/dev/peps/pep-3107/">PEP-3107 ~
+                    function
+                    annotations</a> - Python
+                    3.0
+                </li>
+                <li class="fragment"><a
+                        href="https://www.python.org/dev/peps/pep-0526/">PEP-526 ~
+                    variable
+                    annotations</a> - Python 3.6
+                </li>
+            </ul>
+        </section>
+        <section>
+            <h2>type annotations</h2>
+            <h3>for example</h3>
+            <pre style="font-size: 0.75em">
+                    <code class="lang-python" data-trim data-noescape>
+                    def greeting(name: str) -> str:
+                        value : str = 'Hello'
+                        return value + name
+                    </code>
+                </pre>
+        </section>
+        <section>
+            <h2>type annotations</h2>
+            <h3>function annotation</h3>
+            <pre style="font-size: 0.75em">
+                    <code class="lang-python" data-trim data-noescape>
+                    def greeting(name<mark>: str</mark>) <mark>-> str</mark>:
+                        value : str = 'Hello'
+                        return value + name
+                    </code>
+                </pre>
+        </section>
+
+        <section>
+            <h2>type annotations</h2>
+            <h3>variable annotation</h3>
+            <pre style="font-size: 0.75em">
+                    <code class="lang-python" data-trim data-noescape>
+                    def greeting(name: str) -> str:
+                        value <mark>: str</mark> = 'Hello'
+                        return value + name
+                    </code>
+                </pre>
+        </section>
+
+
+        <section>
+            <h2>type annotations</h2>
+            <pre style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+            from typing import List
+
+            class A(object):
+                def __init__() <mark>-> None</mark>:
+                     self.elements <mark>: List[int]</mark> = []
+
+               def add(element<mark>: int</mark>) <mark>-> None</mark>:
+                     self.elements.append(element)
+                    </code>
+            </pre>
+
+            <ul class="plus">
+                <li class="fragment">the canonical and <i>clean</i> way</li>
+                <li class="fragment">packaging solved</li>
+            </ul>
+
+            <ul class="cross">
+                <li class="fragment">requires use of Python 3.6 (no Python 2, or
+                    <=3.4)
+                </li>
+                <li class="fragment">requires importing all type dependencies (runtime
+                    penalty?)
+                </li>
+                <li class="fragment"> the interpreter needs to evaluate type hints at
+                    syntax parsing - time consuming???
+                    <div class="fragment"><a
+                            href="https://www.python.org/dev/peps/pep-0563/">PEP-563 ~
+                        postponed
+                        evaluation of annotations</a> - Python 3.7
+                        <pre style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+                        from __future__ import annotations
+                </code>
+            </pre>
+
+
+                    </div>
+
+                </li>
+            </ul>
+        </section>
+
+        <section>
+            <h2>type comments</h2>
+            <pre style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+            from typing import List
+
+            class A(object):
+                def __init__():
+                     <mark># type: () -> None</mark>
+                     self.elements = []  <mark># type: List[int]</mark>
+
+               def add(element):
+                     <mark># type: (List[int]) -> None</mark>
+                     self.elements.append(element)
+                    </code>
+            </pre>
+            <ul class="plus">
+                <li class="fragment">works under any Python version</li>
+                <li class="fragment">type information is kept locally</li>
+                <li class="fragment">packaging solved</li>
+            </ul>
+
+            <ul class="cross">
+                <li class="fragment">kinda ugly, lot of noise beside logic</li>
+                <li class="fragment">unused imports</li>
+                <li class="fragment">sometime confuses linters, need to add noqa/pylint
+                </li>
+            </ul>
+
+        </section>
+
+        <section>
+            <h2>type comments</h2>
+            <ul class="cross">
+                <li>kinda ugly, lot of noise beside logic (6 lines)</li>
+            </ul>
+            <pre style="font-size: 0.75em">
+                <code style="max-height: none; height: 505px;" class="lang-python" data-noescape>
+
+@contextmanager
+def swap_in_state(state, config, overrides):
+
+
+
+
+    old_config, old_overrides = state.config, state.overrides
+    state.config, state.overrides = config, overrides
+    yield old_config, old_overrides
+    state.config, state.overrides = old_config, old_overrides</code>
+        </pre>
+        </section>
+
+        <section>
+            <h2>type comments</h2>
+            <ul class="cross">
+                <li>kinda ugly, lot of noise beside logic (10 lines)</li>
+            </ul>
+            <pre style="font-size: 0.75em">
+                <code style="max-height: none; height: 505px;" class="lang-python" data-noescape>
+
+@contextmanager
+def swap_in_state(state,  <mark># type: State</mark>
+                  config,  <mark># type: HasGetSetMutable</mark>
+                  overrides  <mark># type: Optional[HasGetSetMutable]</mark>
+                 ):
+<mark># type: (...) -> Generator[Tuple[HasGetSetMutable, Optional[HasGetSetMutable]], None, None]</mark>
+    old_config, old_overrides = state.config, state.overrides
+    state.config, state.overrides = config, overrides
+    yield old_config, old_overrides
+    state.config, state.overrides = old_config, old_overrides</code>
+            </pre>
+        </section>
+
+        <section>
+            <h2>type comments</h2>
+            <ul class="cross">
+                <li>kinda ugly, lot of noise beside logic (12 lines) + unused imports</li>
+            </ul>
+            <pre style="font-size: 0.75em">
+                <code style="max-height: none; height: 505px;" class="lang-python" data-noescape><mark>from typing import Generator, Tuple, Optional</mark>
+<mark>from magic import RunSate, HasGetSetMutable</mark>
+
+@contextmanager
+def swap_in_state(state,  # type: State
+                  config,  # type: HasGetSetMutable
+                  overrides  # type: Optional[HasGetSetMutable]
+                 ):
+    # type: (...) -> Generator[Tuple[HasGetSetMutable, Optional[HasGetSetMutable]], None, None]
+    old_config, old_overrides = state.config, state.overrides
+    state.config, state.overrides = config, overrides
+    yield old_config, old_overrides
+    state.config, state.overrides = old_config, old_overrides</code>
+        </pre>
+        </section>
+
+        <section>
+            <h2>type comments</h2>
+            <ul class="cross">
+                <li>sometimes conflicts with other linters</li>
+            </ul>
+            <pre style="font-size: 0.75em">
+                <code style="max-height: 600px;" class="lang-python" data-trim data-noescape>
+    from typing import Generator, Tuple, Optional, Dict, List
+    from magic import RunSate
+
+    <mark>HasGetSetMutable = Union[Dict, List]  # pylint: disable=invalid-name</mark>
+
+    @contextmanager
+    def swap_in_state(state,  # type: State
+                      config,  # type: HasGetSetMutable
+                      overrides  # type: Optional[HasGetSetMutable]
+                     ):  <mark># pylint: disable=bad-continuation</mark>
+        # type: (...) -> Generator[Tuple[HasGetSetMutable, Optional[HasGetSetMutable]], None, None]
+        old_config, old_overrides = state.config, state.overrides
+        state.config, state.overrides = config, overrides
+        yield old_config, old_overrides
+        state.config, state.overrides = old_config, old_overrides
+                </code>
+            </pre>
+        </section>
+
+        <section>
+            <h2>type comments</h2>
+
+            <pre style="font-size: 0.6em">
+                <code class="lang-python" data-trim data-noescape>
+    @contextmanager
+    def swap_in_state(state, config, overrides):
+        old_config, old_overrides = state.config, state.overrides
+        state.config, state.overrides = config, overrides
+        yield old_config, old_overrides
+        state.config, state.overrides = old_config, old_overrides
+                </code>
+            </pre>
+
+            <pre style="font-size: 0.6em" class="fragment">
+                <code style="max-height: 600px;" class="lang-python" data-trim data-noescape>
+    <mark>from typing import Generator, Tuple, Optional, Dict, List</mark>
+    <mark>from magic import RunSate</mark>
+
+    <mark>HasGetSetMutable = Union[Dict, List]  # pylint: disable=invalid-name</mark>
+    <mark>Result = Generator[   # pylint: disable=invalid-name
+        Tuple[HasGetSetMutable, Optional[HasGetSetMutable]], None, None]</mark>
+
+    @contextmanager
+    def config_in_state(state, <mark> # type: State</mark>
+                       config, <mark> # type: HasGetSetMutable</mark>
+                       overrides <mark> # type: Optional[HasGetSetMutable]</mark>
+                        ):  <mark># pylint: disable=bad-continuation</mark>
+        <mark># type: (...) -> Result</mark>
+        old_config, old_overrides = state.config, state.overrides
+        state.config, state.overrides = config, overrides
+        yield old_config, old_overrides
+        state.config, state.overrides = old_config, old_overrides
+                </code>
+            </pre>
+        </section>
+
+        <section>
+            <h2>interface/stub files</h2>
+            <pre style="font-size: 0.6em; margin-top: 0; margin-bottom: 0">
+                <code class="lang-python" data-trim data-noescape>
+                class A(object):
+                  def __init__() -> None:
+                      self.elements = []
+
+                  def add(element):
+                      self.elements.append(element)
+                    </code>
+            </pre>
+            <pre style="font-size: 0.6em; margin-top: 0; margin-bottom: 0">
+                <code class="lang-python" data-trim data-noescape>
+                # a.pyi alongside a.py
+                <mark>from typing import List
+
+                class A(object):
+                  elements = ... # type: List[int]
+                  def __init__() -> None: ...
+                  def add(element: int) -> None: ...</mark>
+                    </code>
+            </pre>
+            <ul class="plus" style="margin-top: 0">
+                <li class="fragment">works under any Python version</li>
+                <li class="fragment">no original source code change required</li>
+                <li class="fragment">can use latest Python features</li>
+                <li class="fragment">no conflicts with other linter tools</li>
+                <li class="fragment">well tested with <a
+                        href="https://github.com/python/typeshed">typeshed</a></li>
+            </ul>
+        </section>
+
+        <section>
+            <h2>interface/stub files</h2>
+            <pre style="font-size: 0.6em; margin-top: 0; margin-bottom: 0">
+                <code class="lang-python" data-trim data-noescape>
+                class A(object):
+                  def __init__() -> None:
+                      self.elements = []
+
+                  def add(element):
+                      self.elements.append(element)
+                    </code>
+            </pre>
+            <pre style="font-size: 0.6em; margin-top: 0; margin-bottom: 0">
+                <code class="lang-python" data-trim data-noescape>
+                # a.pyi alongside a.py - ellipse for body stub
+                <mark>from typing import List
+
+                class A(object):
+                  elements = ... # type: List[int]
+                  def __init__() -> None: ...
+                    </code>
+            </pre>
+            <ul class="cross">
+                <li>duplicate code - maintenance burden</li>
+                <li class="fragment">extra content to package<br>
+                    <a href="https://www.python.org/dev/peps/pep-0563/">PEP-563 ~
+                        Distributing and Packaging Type
+                        Information</a> - Python 3.7
+                </li>
+                <li class="fragment"> troublesome to maintain - WIP <a href="https://github.com/python/mypy/pull/5139">python/mypy/pull/5139</a>
+                    <ul>
+                        <li class="fragment">once specified source is ignored</li>
+                        <li class="fragment">no checks for matching stub to implementation</li>
+                        <li class="fragment">cannot annotate local variables</li>
+                    </ul>
+                </li>
+            </ul>
+        </section>
+
+
+        <section>
+            <h2>bonus: docstrings</h2>
+            <pre style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+                class A(object):
+                    def __init__():
+                         self.elements = []
+
+                   def add(element):
+                       """
+                       :param <mark>List[int] element</mark>: the element to add
+                        <mark>:rtype: None</mark>
+                       """
+                       self.elements.append(element)
+                    </code>
+            </pre>
+
+            <ul class="plus">
+                <li>works under any Python version</li>
+                <li class="fragment">does not clash with other linters (unless its a doc linter)</li>
+            </ul>
+
+            <ul class="cross">
+                <li class="fragment">no standard way to specify complex cases (union)</li>
+                <li class="fragment">tool dependent support</li>
+                <li class="fragment">requires changing the documentation</li>
+                <li class="fragment">does not play well with type hinted code</li>
+            </ul>
+        </section>
+
+        <section>
+            <h1>what to add?</h1>
+            <img src="./img/deep_dive.jpg" style="margin-bottom: 0; border-bottom: 0;"/>
+            <p style="font-size: 12px; margin: 0 0;"><a
+                    href="https://www.flickr.com/photos/wwarby/36875463355">&copy;
+                Creative Commons License</a></p>
+        </section>
+
+        <section>
+            <h2>nominal types</h2>
+            <ul>
+                <li>all built in Python types (e.g., <i>int, float, type, object,
+                    etc.)</i></li>
+                <li class="fragment">generic containers (a few examples only)
+                    <pre style="font-size: 0.75em">
+                    <code class="lang-python" data-trim data-noescape>
+                   t : Tuple[int, float] = 0, 1.2
+                   d : Dict[str, int] = {"a": 1, "b": 2}
+                   d : MutableMapping[str, int] = {"a": 1, "b": 2}
+                   l : List[int] = [1, 2, 3]
+                   i : Iterable[Text] = [ u'1', u'2', u'3']
+                    </code>
+                    </pre>
+                </li>
+                <li class="fragment">alias types
+                    <pre style="font-size: 0.75em">
+                    <code class="lang-python" data-trim data-noescape>
+                   Vector = List[float]
+                    </code>
+                    </pre>
+                </li>
+
+                <li class="fragment">distinct types
+                    <pre style="font-size: 0.75em">
+                    <code class="lang-python" data-trim data-noescape>
+                   UserId = NewType('UserId', int)
+                   some_id = UserId(524313)
+                    </code>
+                    </pre>
+                </li>
+
+            </ul>
+        </section>
+
+
+        <section>
+            <h2>nominal types</h2>
+            <ul>
+                <li>NamedTuple
+                    <pre style="font-size: 0.75em">
+                    <code class="lang-python" data-trim data-noescape>
+                   class Employee(NamedTuple):
+                        name: str
+                        id: int
+                    </code>
+                    </pre>
+                </li>
+
+                <li class="fragment">composer
+                    <pre style="font-size: 0.75em">
+                    <code class="lang-python" data-trim data-noescape>
+                   Union[None, int, str] # one of
+                   Optional[float] # Union[None, float]
+                    </code>
+                    </pre>
+                </li>
+
+            </ul>
+        </section>
+
+        <section>
+            <h2>nominal types</h2>
+            <ul style="width: 80%">
+
+                <li>callable - functions
+                    <pre style="font-size: 0.75em">
+                    <code class="lang-python" data-trim data-noescape>
+                   # Callable[[Arg1Type, Arg2Type], ReturnType]
+                   def feeder(get_next_item: Callable[[], str]) -> None:
+                    </code>
+                    </pre>
+                </li>
+
+
+                <li class="fragment">generics - TypeVar
+                    <pre style="font-size: 0.75em">
+                    <code class="lang-python" data-trim data-noescape>
+                   T = TypeVar('T')
+                   class Magic(Generic[T]):
+                         def __init__(self, value: T) -> None:
+                            self.value : T = value
+
+                    def square_values(vars: Iterable[Magic[int]]) -> None:
+                        v.value = v.value * v.value
+                    </code>
+                    </pre>
+                </li>
+
+                <li class="fragment">Any - disable type check
+                    <pre style="font-size: 0.75em">
+                    <code class="lang-python" data-trim data-noescape>
+                   def foo(item: Any) -> int:
+                        item.bar()
+                    </code>
+                </li>
+
+            </ul>
+
+
+        </section>
+
+        <section>
+            <h3><a href="https://www.python.org/dev/peps/pep-0544/">PEP-544</a> -
+                protocols</h3>
+            <p>nominal (main) vs structural typing (support)</p>
+            <pre style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+
+                    KEY = TypeVar('KEY', contravariant=true)
+
+                    class MagicGetter(Protocol[KEY], Sized):
+                            def __getitem__(self, item: KEY) -> int: ...
+
+                    def func_int(param: MagicGetter[int]) -> int:
+                        return param['a'] * 2
+
+                    def func_str(param: MagicGetter[str]) -> str:
+                        return '{}'.format(param['a'])
+
+                    </code>
+            </pre>
+
+        </section>
+
+
+        <section>
+            <h3><a href="https://www.python.org/dev/peps/pep-0544/">PEP-544</a> -
+                protocols</h3>
+            <p>nominal (main) vs structural typing (support)</p>
+            <pre style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+
+                    KEY = TypeVar('KEY', contravariant=true)
+
+                    class MagicGetter(Protocol[KEY], Sized):
+                            def __getitem__(self, item: KEY) -> int: ...
+
+                    <mark>def func_int(param: MagicGetter[int]) -> int:</mark>
+                        return param['a'] * 2
+
+                    <mark>def func_str(param: MagicGetter[str]) -> str:</mark>
+                        return '{}'.format(param['a'])
+
+                    </code>
+            </pre>
+
+        </section>
+
+        <section>
+            <h1>Gotchas</h1>
+            <img src="./img/gotcha.jpg" style="margin-bottom: 0; border-bottom: 0;"/>
+            <p style="font-size: 12px; margin: 0 0;"><a
+                    href="https://www.flickr.com/photos/120374925@N06/30078484263">&copy;
+                Creative Commons CC 2.0 License</a></p>
+        </section>
+
+        <section>
+            <h2>Gotcha #1 - str Python 2/3 diff</h2>
+
+            <pre style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+                class A(object):
+                    def __repr__(self):
+                        # type: () -> str
+                        return 'Rule({})'.format(self.full_name)
+                    </code>
+            </pre>
+            <pre class="fragment" style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+                from __future__ import unicode_literals
+
+                class A(object):
+                    def __repr__(self):
+                        # type: () -> str
+                        res = 'Rule({})'.format(self.full_name)
+                        if sys.version_info > (3, 0):
+                            # noinspection PyTypeChecker
+                            return res
+                        # noinspection PyTypeChecker
+                        return res.encode('utf-8')
+                    </code>
+            </pre>
+        </section>
+
+
+        <section>
+            <h2>Gotcha #2 - multiple return type</h2>
+            <pre style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+                def magic(i: Union[str, int]) -> Union[str, int]:
+                    return i * 2
+                    </code>
+            </pre>
+
+            <pre class="fragment" style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+                def other_func() -> int:
+                    result = magic(2)
+                    <mark>assert isinstance(result, int)</mark>
+                    return result
+                    </code>
+            </pre>
+        </section>
+
+        <section>
+            <h2>Gotcha #2 - multiple return type</h2>
+            <pre style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+                def magic(i: Union[str, int]) -> <mark>Any</mark>:
+                    return i * 2
+                    </code>
+            </pre>
+
+            <pre style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+                def other_func() -> int:
+                    result = magic(2)
+
+                    return result
+                    </code>
+            </pre>
+        </section>
+
+        <section>
+            <h2>Gotcha #2 - multiple return type</h2>
+            <pre style="font-size: 0.75em">
+                <code style="max-height: 500px;" class="lang-python" data-trim data-noescape>
+                from typing import overload
+
+                @overload
+                def magic(i: int) -> int:
+                    pass
+
+                @overload
+                def magic(i: str) -> str:
+                    pass
+
+                def magic(i: Union[int, str]) -> Union[int, str]:
+                    return i * 2
+                    </code>
+            </pre>
+
+            <pre style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+                def other_func() -> int:
+                    result = magic(2)
+
+                    return result
+                    </code>
+            </pre>
+        </section>
+
+        <section>
+            <h2>Gotcha #2 - multiple return type</h2>
+            <pre style="font-size: 0.75em">
+                <code style="max-height: 500px;" class="lang-python" data-trim data-noescape>
+                from typing import overload
+
+                @overload
+                def magic(i: int) -> int:  <mark># pylint: disable=function-redefined</mark>
+                    pass
+
+                @overload
+                def magic(i: str) -> str:  <mark># pylint: disable=function-redefined</mark>
+                    pass
+
+                def magic(i: Union[int, str]) -> Union[int, str]:
+                    return i * 2
+                    </code>
+            </pre>
+
+            <pre style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+                def other_func() -> int:
+                    result = magic(2)
+
+                    return result
+                    </code>
+            </pre>
+        </section>
+
+        <section>
+            <h2>Gotcha #3 - type lookup</h2>
+            <pre style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+                class A(object):
+
+                    def float(self):
+                            # type: () -> float
+                           return 1.0
+                    </code>
+            </pre>
+
+            <pre class="fragment" style="font-size: 0.75em">
+                <code class="lang-bash" data-trim data-noescape>
+                test.py:3: error: Invalid type "test.A.float"
+                    </code>
+            </pre>
+            <p class="fragment">look for type in the closest namespace - <a
+                    href="https://github.com/python/mypy/issues/3775">3775</a></p>
+        </section>
+
+        <section>
+            <h2>Gotcha #3 - type lookup</h2>
+            <pre style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+                <mark>if typing.TYPE_CHECKING:</mark>
+                    <mark>import builtins</mark>
+
+                class A(object):
+
+                    def float(self):
+                            # type: () -> <mark>builtins.float</mark>
+                           return 1.0
+                    </code>
+            </pre>
+            <pre style="font-size: 0.75em">
+                <code class="lang-bash" data-trim data-noescape>
+                test.py:3: error: Invalid type "test.A.float"
+                    </code>
+            </pre>
+            <p>look for type in the closest namespace - <a
+                    href="https://github.com/python/mypy/issues/3775">3775</a>
+            </p>
+        </section>
+
+        <section>
+
+            <h2>Gotcha #4 - contravariant argument</h2>
+            <pre style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+                from abc import ABCMeta, abstractmethod
+                from typing import Union
+
+                class A(metaclass=ABCMeta):
+                    @abstractmethod
+                    def func(self, key):  # type: (Union[int, str]) -> str
+                        raise NotImplementedError
+
+                class B(A):
+                    def func(self, key):  # type: (int) -> str
+                        return str(key)
+
+                class C(A):
+                    def func(self, key):  # type: (str) -> str
+                        return key
+                    </code>
+            </pre>
+
+            <pre class="fragment" style="font-size: 0.75em">
+                <code class="lang-bash" data-trim data-noescape>
+                test.py:12: error: Argument 1 of "func" incompatible with supertype "A"
+                test.py:17: error: Argument 1 of "func" incompatible with supertype "A"
+                    </code>
+            </pre>
+        </section>
+
+        <section>
+
+            <h2>Gotcha #4 - contravariant argument</h2>
+            <p>specialization can handle more</p>
+            <pre style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+                from abc import ABCMeta, abstractmethod
+                from typing import Union
+
+                class A(metaclass=ABCMeta):
+                    @abstractmethod
+                    def func(self, key):  # type: (Union[int, str]) -> str
+                        raise NotImplementedError
+
+                class B(A):
+                    def func(self, key):  # type: (Union[int, str, bool]) -> str
+                        return str(key)
+
+                class C(A):
+                    def func(self, key):  # type: (Union[int, str, List]) -> str
+                        return key
+                    </code>
+            </pre>
+        </section>
+
+        <section>
+
+            <h2>Gotcha #5 - compatibility</h2>
+
+            <pre style="font-size: 0.6em">
+                <code class="lang-python" data-trim data-noescape>
+                class A:
+                    @classmethod
+                    def magic(cls, a: int) -> 'A':
+                        return cls()
+
+                class B(A):
+                    @classmethod
+                    def magic(cls, a: int, b: bool) -> 'B':
+                        return cls()
+                    </code>
+            </pre>
+
+            <pre class="fragment" style="font-size: 0.6em">
+                <code class="lang-python" data-trim data-noescape>
+                from typing import List, Type
+
+                elements : List[Type[A]] = [A, B]
+                print( [e.magic(1) for e in elements])
+                    </code>
+            </pre>
+
+            <pre class="fragment" style="font-size: 0.6em">
+                <code class="lang-python" data-trim data-noescape>
+                        print( [e.magic(1) for e in elements])
+                    TypeError: magic() missing 1 required positional argument: 'b'
+                    </code>
+            </pre>
+
+            <pre class="fragment" style="font-size: 0.6em">
+                <code class="lang-python" data-trim data-noescape>
+                    test.py:9: error: Signature of "magic" incompatible with supertype "A"
+                    </code>
+            </pre>
+
+        </section>
+
+        <section>
+
+            <h2>Gotcha #5 - compatibility</h2>
+
+            <pre style="font-size: 0.6em">
+                <code class="lang-python" data-trim data-noescape>
+                class A:
+                    @classmethod
+                    def magic(cls, a: int) -> 'A':
+                        return cls()
+
+                class B(A):
+                    @classmethod
+                    def magic(cls, a: int, b: bool <mark>= False</mark>) -> 'B':
+                        return cls()
+                    </code>
+            </pre>
+
+            <pre style="font-size: 0.6em">
+                <code class="lang-python" data-trim data-noescape>
+                from typing import List, Type
+
+                elements : List[Type[A]] = [A, B]
+                print( [e.magic(1) for e in elements])
+                    </code>
+            </pre>
+
+        </section>
+
+        <section>
+
+            <h2>Gotcha #5 - compatibility</h2>
+
+            <pre style="font-size: 0.6em">
+                <code class="lang-python" data-trim data-noescape>
+                class A:
+                    def __init__(self, a: int) -> None:
+                        pass
+
+                class B(A):
+                    def __init__(self, a: int, b: bool) -> None:
+                        super().__init__(a)
+                    </code>
+            </pre>
+
+            <pre class="fragment" style="font-size: 0.6em">
+                <code class="lang-python" data-trim data-noescape>
+                from typing import List, Type
+
+                elements : List[Type[A]]= [A, B]
+                print( [e(1) for e in elements])
+                    </code>
+            </pre>
+
+            <pre class="fragment" style="font-size: 0.6em">
+                <code class="lang-python" data-trim data-noescape>
+                        print( [e(1) for e in elements])
+                    TypeError: __init__() missing 1 required positional argument: 'b'
+                    </code>
+            </pre>
+            <pre class="fragment" style="font-size: 0.6em">
+                <code class="lang-python" data-trim data-noescape>
+                    </code>
+            </pre>
+
+            <ul class="fragment">
+                <li><i>too common to prohibit incompatible __init__ and __new__</i></li>
+            </ul>
+
+        </section>
+        <section>
+            <img src="./img/david.png"/>
+        </section>
+
+
+        <section>
+            <h2>when you hit the wall</h2>
+            <ul style="width: 90%">
+                <li>take out the bigger hammer</li>
+                <li class="fragment">use <i>reveal_type</i> to see inferred type</li>
+                <li class="fragment"> use <i>cast</i> to force a given type:
+                    <pre style="font-size: 0.7em">
+                <code class="lang-python" data-trim data-noescape>
+                from typing import List, cast
+
+                a = [4]
+                reveal_type(a)         # -> error: Revealed type is 'builtins.list[builtins.int*]'
+
+                b = cast(List[int], a) # passes fine
+                c = cast(List[str], a) # type: List[str] # passes fine (no runtime check)
+                reveal_type(c)         # -> error: Revealed type is 'builtins.list[builtins.str]'</code>
+            </pre>
+                </li>
+                <li class="fragment">use the <i># type: ignore</i> comment to ignore an
+                    error:
+                    <pre style="font-size: 0.7em">
+                <code class="lang-python" data-trim data-noescape>
+                x = confusing_function() # type: ignore # see mypy/issues/1167
+                    </code>
+            </pre>
+                </li>
+            </ul>
+
+        </section>
+
+        <section>
+            <h1>Merge docstring and typing?</h1>
+        </section>
+
+        <section>
+            <h2>how to document types?</h2>
+            <ul style="width: 80%">
+                <li class="fragment"><a
+                        href="https://www.python.org/dev/peps/pep-0257/">PEP-257</a>
+                    defines how-to
+                    document Python code
+                </li>
+                <li class="fragment">also supports adding type information for:
+                    <ul>
+                        <li>variable</li>
+                        <li>parameter</li>
+                    </ul>
+                    <pre style="font-size: 0.75em" class="fragment">
+                <code class="lang-python" data-trim data-noescape>
+                class A(object):
+                    def __init__():
+                         self.elements = []
+
+                   def add(element):
+                       """
+                       :param <mark>List[int] element</mark>: the element to add
+                        <mark>:rtype: None</mark>
+                       """
+                       self.elements.append(element)
+                    </code>
+            </pre>
+                </li>
+            </ul>
+        </section>
+
+        <section>
+            <h2><a href="https://github.com/gaborbernat/sphinx-autodoc-typehints">sphinx-autodoc-typehints</a>
+            </h2>
+            <ul>
+                <li>avoid type duplication between docstring and type hinting</li>
+                <li>during document generation get type hinted types and insert it into
+                    the docstring
+                </li>
+            </ul>
+        </section>
+
+        <section>
+            <h2>how to use it</h2>
+            <ul>
+                <li>install the library
+                    <pre style="font-size: 0.75em">
+                <code class="lang-bash" data-trim data-noescape>
+                    pip install sphinx-autodoc-types>=2.1.1
+                    </code>
+            </pre>
+                </li>
+
+                <li>enable it inside the <i>conf.py</i>
+                    <pre style="font-size: 0.75em">
+                <code class="lang-python" data-trim data-noescape>
+                    # conf.py
+                    extensions = ['sphinx_autodoc_typehints']
+                    </code>
+            </pre>
+                </li>
+                <li>generate the documentation as usual</li>
+            </ul>
+        </section>
+
+        <section>
+            <section>
+                <h5>outcome - <a href="https://github.com/RookieGameDevs/revived">RookieGameDevs/revived</a>
+                </h5>
+                <img style="width: auto; height: 500px;" data-src="img/sphinx_doc_src.PNG">
+            </section>
+        </section>
+
+        <section>
+            <section>
+                <h5>outcome - <a href="https://github.com/RookieGameDevs/revived">RookieGameDevs/revived</a>
+                </h5>
+                <img style="width: auto; height: 500px;" data-src="img/sphinx_doc.PNG">
+            </section>
+        </section>
+
+        <section>
+            <h2>what's next for typing</h2>
+            <div class="fragment">
+                <h3><a href="https://www.python.org/dev/peps/pep-0586/">Literal types - PEP-586</a></h3>
+
+                <pre style="font-size: 0.75em">
+                <code style="max-height: 500px;" class="lang-python" data-trim data-noescape>
+@overload
+def open(fn: str, mode: Literal['r', 'w']) -> IO[Text]: pass
+@overload
+def open(fn: str, mode: Literal['rb', 'wb']) -> IO[bytes]: pass
+def open(fn: str, mode: str):
+    ...
+
+with open("/etc/passwd", "r") as ft:
+    lines = ft.readlines()  # List[Text]
+
+with open("/bin/sh", "rb") as fb:
+    data = fb.read(512) # bytes
+                </code>
+            </pre>
+            </div>
+        </section>
+
+        <section>
+            <h2>what's next for typing</h2>
+            <div>
+                <h3><a href="https://www.python.org/dev/peps/pep-0586/">Literal types - PEP-586</a></h3>
+
+                <pre style="font-size: 0.75em">
+                <code style="max-height: 500px;" class="lang-python" data-trim data-noescape>
+@overload
+def open(fn: str, mode: Literal['r', 'w']) -> IO[Text]: pass
+@overload
+def open(fn: str, mode: Literal['rb', 'wb']) -> IO[bytes]: pass
+def open(fn: str, mode: str):
+    ...
+
+with <mark>open</mark>("/etc/passwd", <mark>"r"</mark>) as ft:
+    lines = ft.readlines()  # <mark>List[Text]</mark>
+
+with open("/bin/sh", "rb") as fb:
+    data = fb.read(512) # bytes
+                </code>
+            </pre>
+            </div>
+        </section>
+
+        <section>
+            <h2>what's next for typing</h2>
+            <div>
+                <h3><a href="https://www.python.org/dev/peps/pep-0586/">Literal types - PEP-586</a></h3>
+
+                <pre style="font-size: 0.75em">
+                <code style="max-height: 500px;" class="lang-python" data-trim data-noescape>
+@overload
+def open(fn: str, mode: Literal['r', 'w']) -> IO[Text]: pass
+@overload
+def open(fn: str, mode: Literal['rb', 'wb']) -> IO[bytes]: pass
+def open(fn: str, mode: str):
+    ...
+
+with open("/etc/passwd", "r") as ft:
+    lines = ft.readlines()  # List[Text]
+
+with <mark>open</mark>("/bin/sh", <mark>"rb"</mark>) as fb:
+    data = fb.read(512) # <mark>bytes</mark>
+                </code>
+            </pre>
+            </div>
+        </section>
+
+        <section>
+            <h2>what's next for typing</h2>
+            <div>
+                <h3><a href="https://www.python.org/dev/peps/pep-0589/">Typed dictionaries - PEP-589</a></h3>
+
+                <pre style="font-size: 0.75em">
+                <code style="max-height: 500px;" class="lang-python" data-trim data-noescape>
+class Movie(TypedDict):
+    name: str
+    year: int
+
+movie: Movie = {'name': 'Blade Runner', 'year': 1982}
+                </code>
+            </pre>
+            </div>
+        </section>
+
+        <section>
+            <h2>what's next for typing</h2>
+            <div>
+                <h3><a href="https://www.python.org/dev/peps/pep-0591/">Final qualifier - PEP-591</a></h3>
+
+                <pre style="font-size: 0.75em">
+                <code style="max-height: 500px;" class="lang-python" data-trim data-noescape>
+
+RATE: Final = 3000
+RATE = 2500  # ERROR -- cannot set Final variable
+
+# Final class variable
+class User:
+    DEFAULT_ID: Final = 0
+class BusinessUser(User):
+    DEFAULT_ID = 1  # ERROR -- cannot set inherited Final class variable
+                </code>
+            </pre>
+            </div>
+        </section>
+
+        <section>
+            <h2>what's next for typing</h2>
+            <div>
+                <h3><a href="https://www.python.org/dev/peps/pep-0591/">Final qualifier - PEP-591</a></h3>
+
+                <pre style="font-size: 0.75em">
+                <code style="max-height: 500px;" class="lang-python" data-trim data-noescape>
+
+<mark>RATE: Final = 3000</mark>
+RATE = 2500  # ERROR -- cannot set Final variable
+
+# Final class variable
+class User:
+    <mark>DEFAULT_ID: Final = 0</mark>
+class BusinessUser(User):
+    DEFAULT_ID = 1  # ERROR -- cannot set inherited Final class variable
+                </code>
+            </pre>
+            </div>
+        </section>
+
+        <section>
+            <h2>what's next for typing</h2>
+            <div>
+                <h3><a href="https://www.python.org/dev/peps/pep-0591/">Final qualifier - PEP-591</a></h3>
+
+                <pre style="font-size: 0.75em">
+                <code style="max-height: 500px;" class="lang-python" data-trim data-noescape>
+
+RATE: Final = 3000
+<mark>RATE = 2500  # ERROR -- cannot set Final variable</mark>
+
+# Final class variable
+class User:
+    DEFAULT_ID: Final = 0
+class BusinessUser(User):
+    <mark>DEFAULT_ID = 1  # ERROR -- cannot set inherited Final class variable</mark>
+                </code>
+            </pre>
+            </div>
+        </section>
+
+        <section>
+            <h2>what's next for typing</h2>
+            <h3>merge stubs and sources during check</h3>
+            <ul>
+                <li> troublesome to maintain stubs - WIP <a href="https://github.com/python/mypy/pull/5139">python/mypy/pull/5139</a>
+                    <ul>
+                        <li>once specified source is ignored</li>
+                        <li>no checks for matching stub to implementation</li>
+                        <li>cannot annotate local variables</li>
+                    </ul>
+                </li>
+            </ul>
+        </section>
+
+        <section>
+            <h2>what's next for typing</h2>
+            <h3>numeric types</h3>
+            <ul>
+                <li>numpy/pandas support
+                    <ul>
+                        <li>exact sized arrays</li>
+                        <li>variadic type variables</li>
+                        <li>key types</li>
+                    </ul>
+                </li>
+            </ul>
+        </section>
+
+        <section>
+            <h2>what's next for typing</h2>
+            <h3>less camel case and imports</h3>
+            <pre style="font-size: 0.75em">
+                <code style="max-height: 500px;" class="lang-python" data-noescape>from typing import List
+
+a: List[int] = [1, 2]
+b : Dict[int, str] = {}</code>
+            </pre>
+        </section>
+
+        <section>
+            <h2>what's next for typing</h2>
+            <h3>less camel case and imports</h3>
+            <pre style="font-size: 0.75em">
+                <code style="max-height: 500px;" class="lang-python" data-noescape>
+
+a: list[int] = [1, 2]
+b : dict[int, str] = {}</code>
+            </pre>
+        </section>
+
+        <section>
+            <h2>what's next for typing</h2>
+            <h3>shorter syntax</h3>
+            <pre style="font-size: 0.75em">
+                <code style="max-height: 500px;" class="lang-python" data-noescape>a : Union[str, int]
+b : Optional[int] = {}</code>
+            </pre>
+        </section>
+
+        <section>
+            <h2>what's next for typing</h2>
+            <h3>shorter syntax</h3>
+            <pre style="font-size: 0.75em">
+                <code style="max-height: 500px;" class="lang-python" data-noescape>a : str | int
+b : ?int = {}</code>
+            </pre>
+        </section>
+
+        <section>
+            <h2>what's next for typing</h2>
+            <h3>define unified core error codes</h3>
+            <ul>
+                <li> now that we have 4+ type checkers</a>
+                    <ul>
+                        <li>have common error codes</li>
+                        <li>disabling errors should be cross tool compatible</li>
+                        <li>common error FAQ base</li>
+                    </ul>
+                </li>
+            </ul>
+        </section>
+
+
+        <section>
+            <h1>conclusion</h1>
+        </section>
+        <section>
+            <h2>when to use it?</h2>
+            <ul>
+                <li>think of them as unit tests ensuring type correctness</li>
+                <li class="fragment">so use them whenever you would write unit tests</li>
+                <li class="fragment">but remember they can do much more
+                    <ul>
+                        <li>checked docstring typing</li>
+                        <li>runtime type validation</li>
+                        <li>etc.</li>
+                    </ul>
+                </li>
+                <li class="fragment">but prepare for some discomfort and challenge sometimes</li>
+            </ul>
+        </section>
+
+
+        <section>
+            <h1>thank you</h1>
+            <img data-src="img/thats_all_folks.jpg"
+                 style="margin-bottom: 0; border-bottom: 0;"/>
+            <p><a href="https://www.bernat.tech/the-state-of-type-hints-in-python/">https://www.bernat.tech/the-state-of-type-hints-in-python/</a>
+            </p>
+            <p style="font-size: 12px; margin: 0 0;"><a
+                    href="https://commonhttps.wikimedia.org/wiki/File:Common_Seal_Phoca_vitulina.jpg">&copy;
+                Creative Commons Attribution-Share Alike 2.5 Generic</a></p>
+        </section>
+
+        <section>
+            <h1>we're hiring</h1>
+            <h3><a href="https://bloomberg.com/engineering">https://bloomberg.com/engineering</a>
+            </h3>
+
+            <p>see <a href="https://TechAtBloomberg.com">TechAtBloomberg.com</a> / <a
+                    href="https://twitter.com/techatbloomberg">@TechAtBloomberg</a></p>
+        </section>
+
+    </div>
+</div>
+
+<div style="position:absolute; bottom: 2%; right: 2%; width: 250px">
+    <p style="color: #767676; font-family: Helvetica, sans-serif; font-weight: bold; font-size: 3em; margin: 5px 0">
+        Bloomberg</p>
+    <p style="text-align: center; font-weight: bold; font-size: 0.8em; margin: 0 auto">
+        &copy; 2019 Bloomberg Finance L.P. <br>
+        All rights reserved.</p>
+</div>
+
+<script src="node_modules/reveal.js/lib/js/head.min.js"></script>
+<script src="node_modules/reveal.js/js/reveal.js"></script>
+<script>
+    Reveal.initialize({
+
+        height: '95%',
+        width: '95%',
+        center: true,
+        history: true,
+
+        transition: 'none',
+        theme: Reveal.getQueryHash().theme,
+
+        dependencies: [{
+            src: 'node_modules/reveal.js/lib/js/classList.js',
+            condition: function () {
+                return !document.body.classList;
+            }
+        }, {
+            src: 'node_modules/reveal.js/plugin/highlight/highlight.js',
+            async: true,
+            callback: function () {
+                hljs.initHighlightingOoutnLoad();
+            }
+        }]
+    });
+</script>
+</body>
+
+</html>

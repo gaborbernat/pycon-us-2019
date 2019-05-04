@@ -1,0 +1,20 @@
+{
+  "name": "type",
+  "version": "1.0.0",
+  "description": "",
+  "dependencies": {
+    "reveal.js": "3.8.0",
+    "highlight.js": ""
+  },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "https://bbgithub.dev.bloomberg.com/bgabor8/presentation.git"
+  },
+  "author": "Bernat Gabor",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://bbgithub.dev.bloomberg.com/bgabor8/presentation/issues"
+  },
+  "homepage": "https://bbgithub.dev.bloomberg.com/bgabor8/presentation/pycon"
+}

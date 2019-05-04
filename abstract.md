@@ -1,0 +1,4 @@
+# Details
+Bernat Gabor works at Bloomberg LP as a software engineer and will be giving a talk about Python typing/mypy.
+
+Type hinting for Python (as a linter tool) came out back in September 2015 as part of Python 3.5 (and was championed by Guido himself). Since then, variable annotations (plus, more recently, protocols) improved its capabilities even further. Over the last two years, tools, such as mypy, could build on top of it. Slowly, these annotations have emerged from a proof of concept state (e.g., mypy API planning) to becoming a stable feature. In this presentation, Bernat will detail his experience using type hinting for both adding type hinting and checking type correctness for a library supporting both Python 2 and 3, and reusing this information to automatically insert type data into the generated Sphinx documentation.
